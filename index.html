@@ -817,6 +817,14 @@ function doAction(act, id, opts){
       if(opts.expires) np.expires = opts.expires;
       if(opts.specUrl) np.specUrl = opts.specUrl;
       providers.push(np); idbPut("providers", np); bumpRev();
+      if(domain && !opts.color){
+        sampleLogoColor(domain, function(hex){
+          var cur = getProvider(id);
+          if(hex && cur === np){
+            np.color = hex; idbPut("providers", np); bumpRev(); renderAll();
+          }
+        });
+      }
       return { kind: "ok", msg: np.name + " added (" + kindLabel(np) + (opts.expires ? " · expires " + fmtDate(opts.expires) : "") + ")" };
     }
     var changed = [];
@@ -830,6 +838,14 @@ function doAction(act, id, opts){
     if(opts.specUrl){ existing.specUrl = opts.specUrl; }
     if(opts.color){ existing.color = opts.color; }
     idbPut("providers", existing); bumpRev();
+    if(opts.domain && !opts.color){
+      sampleLogoColor(opts.domain, function(hex){
+        var cur = getProvider(id);
+        if(hex && cur === existing){
+          existing.color = hex; idbPut("providers", existing); bumpRev(); renderAll();
+        }
+      });
+    }
     return { kind: "info", msg: existing.name + " updated" + (changed.length ? " (" + changed.join(", ") + ")" : " — no changes in link") };
   }
   var p = getProvider(id);

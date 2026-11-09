@@ -129,3 +129,5 @@ For per-model pools on one platform (e.g. two Qwen Cloud models with separate 1M
 ## Provenance and human-paste
 
 `&src=<agent-name>` tags which agent fired a link. When a human pastes a rate-limit message into your chat, you are the parser: extract provider and reset time, then open `#cap=<id>&resets=HH:MM`. If no provider matches a message, create one with `#add` using a stable slug — do not drain a shared provider to avoid touching unrelated models.
+
+Branding on `#add` works exactly like the Add-provider form: `url=` sets the domain, the favicon is fetched (letter-mark fallback), the display name derives from the domain when `name=` is omitted, and the accent color is sampled from the logo on-device (canvas) shortly after creation — pass `color=` to pin an explicit color and skip sampling.
