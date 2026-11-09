@@ -797,7 +797,19 @@ function doAction(act, id, opts){
   }
   if(act === "cap"){
     if(p.kind === "tokens") return doAction("drain", id, opts);
-    if(!w || w.resetsAt <= now()) return null;
+    if(!w || w.resetsAt <= now()){
+      /* no active window: a cap link with a reset time IS the window — reconstruct it */
+      var capReset;
+      if(opts.resetsAt) capReset = opts.resetsAt;
+      else if(opts.durMs) capReset = now() + opts.durMs;
+      else return null;
+      var lengthMs = opts.durMs || (p.kind === "weekly" ? (capReset - lastMonday(now())) : p.hours * HOUR);
+      var startAt = Math.min(now(), capReset - lengthMs);
+      if(startAt >= capReset) startAt = capReset - MIN;
+      var cw = { id: newId("w"), providerId: p.id, startedAt: Math.round(startAt), resetsAt: Math.round(capReset), capped: true, src: opts.src || "manual" };
+      wins.push(cw); idbPut("windows", cw); bumpRev();
+      return { kind: "warn", msg: p.name + " marked capped · back at " + fmtClock(capReset) };
+    }
     w.capped = true;
     if(opts.resetsAt) w.resetsAt = opts.resetsAt;
     else if(opts.durMs) w.resetsAt = Math.max(w.startedAt + MIN, now() + opts.durMs);

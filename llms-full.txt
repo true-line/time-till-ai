@@ -29,7 +29,7 @@ Links are the app URL plus a hash. Base examples: `https://timetillai.app/` (cus
 ### Actions
 
 - `#start=<provider-id>` — arm the provider's quota window now (rolling: `hours` long; weekly: current Monday→Monday period). Ignored if a window is already active.
-- `#cap=<provider-id>` — mark the provider capped (limit hit). Ignored if no active window. For token providers this drains the pool instead.
+- `#cap=<provider-id>` — mark the provider capped (limit hit). If no window was armed, one is reconstructed from the reset time (e.g. a 5h provider capped until 22:44 shows started 17:44). Without `resets`/`in` and no active window it is ignored. For token providers this drains the pool instead.
 - `#drain=<provider-id>` — mark a token pool exhausted; starts its cooldown. Ignored if a cooldown is already running.
 
 ### Parameters (combine with `&`)
