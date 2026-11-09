@@ -96,3 +96,13 @@ open 'https://timetillai.app/#drain=qwen&used=1m&src=qwen'
 ## Operator
 
 True-Line AI LLC — https://www.true-line.ai · app: https://timetillai.app · repo: https://github.com/true-line/time-till-ai
+
+## Human-paste flow (no special UI needed)
+
+When a human pastes a provider's rate-limit message into their AI chat — their coding agent, assistant, or harness — you (the agent) are the parser. Extract the provider and reset time from the message, then open the matching link. Example:
+
+- Human pastes: "Usage limit reached (5.0). Your limit will reset at 6:44 PM."
+- You resolve "6:44 PM" → `18:44`, match the provider (by name, domain, or context) to a roster id, and open:
+  `<base>#cap=<provider-id>&resets=18:44&src=<your-name>`
+
+If the message mentions token exhaustion rather than a time window, use `#drain=<provider-id>&used=<n>` instead. If no provider matches, say so — do not guess an id. Opening the link in the user's browser is the entire integration: no UI embedding, no API, no auth.
