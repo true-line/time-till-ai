@@ -448,6 +448,17 @@ body{
         <button type="button" class="btn btn-ghost btn-sm" id="s-disconnect">Disconnect</button>
       </span>
     </div>
+    <div class="label">Manual sync (no token)</div>
+    <p class="hint">Create a secret gist at <a href="https://gist.github.com/" target="_blank" rel="noopener noreferrer">gist.github.com</a> named <code>timetillai-state.json</code>, paste the JSON below, save &mdash; the gist ID in its URL is your session code. Other devices connect read-only with just that code.</p>
+    <div class="modal-row" style="margin-top:8px">
+      <button type="button" class="btn btn-sm" id="s-load-json"><svg class="ic"><use href="#i-download"/></svg>Load current state</button>
+      <button type="button" class="btn btn-sm" id="s-copy-json"><svg class="ic"><use href="#i-copy"/></svg>Copy JSON</button>
+    </div>
+    <textarea class="input mono" id="s-json" rows="6" style="height:auto;padding:8px 10px;margin-top:8px;resize:vertical;font-family:'JetBrains Mono',monospace;font-size:11px" placeholder="Current state appears here &mdash; paste it into your gist. Or paste a gist&rsquo;s JSON here to import it." spellcheck="false"></textarea>
+    <div class="modal-row" style="margin-top:8px">
+      <button type="button" class="btn btn-primary btn-sm" id="s-apply-json">Apply pasted JSON</button>
+      <span class="hint">Replaces local state with the JSON in the box.</span>
+    </div>
   </div>
 </div>
 
@@ -1597,7 +1608,16 @@ async function gistPull(silent){
     if(!res.ok) throw new Error("GitHub API " + res.status);
     var data = await res.json();
     var f = data.files && data.files[SYNC_FILE];
-    if(!f){ if(!silent) toast("warn", "Gist has no " + SYNC_FILE + " yet — push first"); return false; }
+    if(!f){
+      /* tolerate a manually created gist with a different filename */
+      var alt = null;
+      var files = Object.values(data.files || {});
+      for(var i = 0; i < files.length; i++){
+        if(files[i] && files[i].content && files[i].content.indexOf('"providers"') >= 0){ alt = files[i]; break; }
+      }
+      if(!alt){ if(!silent) toast("warn", "Gist has no state file yet — push first, or paste one named " + SYNC_FILE); return false; }
+      f = alt;
+    }
     var remote = JSON.parse(f.content);
     if((remote.rev || 0) <= (settings.rev || 0)){
       if(!silent) toast("info", "Gist already up to date — no remote changes");
@@ -1667,6 +1687,29 @@ document.getElementById("s-disconnect").addEventListener("click", function(){
   connected = false;
   syncStatus.hidden = true;
   toast("info", "Disconnected — local state kept");
+});
+
+/* ----- manual sync (no token): paste JSON to/from a gist by hand ----- */
+var sJson = document.getElementById("s-json");
+document.getElementById("s-load-json").addEventListener("click", function(){
+  sJson.value = JSON.stringify(exportState(), null, 2);
+  sJson.focus();
+});
+document.getElementById("s-copy-json").addEventListener("click", function(){
+  var txt = sJson.value.trim() || JSON.stringify(exportState(), null, 2);
+  if(!sJson.value.trim()) sJson.value = txt;
+  copyText(txt);
+  toast("ok", "State JSON copied — paste it into your gist");
+});
+document.getElementById("s-apply-json").addEventListener("click", function(){
+  var raw = sJson.value.trim();
+  if(!raw){ toast("warn", "Paste state JSON into the box first"); return; }
+  try{
+    var data = JSON.parse(raw);
+    importState(data).then(function(){
+      toast("ok", "Imported — " + providers.length + " providers, " + wins.length + " records");
+    }).catch(function(err){ toast("danger", "Import failed: " + err.message); });
+  }catch(err){ toast("danger", "That isn't valid JSON: " + err.message); }
 });
 window.addEventListener("focus", function(){
   if(connected && sGist.value.trim()) gistPull(true);
