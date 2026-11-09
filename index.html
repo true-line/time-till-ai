@@ -530,6 +530,20 @@ function parseTok(s){
   if(!m) return null;
   return Math.round(Number(m[1]) * (m[2] && m[2].toLowerCase() === "m" ? 1e6 : m[2] ? 1e3 : 1));
 }
+function parseDate(s){
+  var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((s || "").trim());
+  if(!m) return null;
+  var t = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 23, 59, 59).getTime();
+  return isNaN(t) ? null : t;
+}
+function fmtDate(ms){
+  return new Date(ms).toLocaleDateString([], { month: "short", day: "numeric" });
+}
+function pickColor(seed){
+  var h = 0, s = String(seed || "");
+  for(var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return PALETTE[h % PALETTE.length];
+}
 function nextClock(s){
   var m = /^(\d{1,2}):(\d{2})$/.exec((s || "").trim());
   if(!m) return null;
@@ -667,6 +681,9 @@ function latestWin(pid){
 function stateOf(p){
   var w = latestWin(p.id);
   if(p.kind === "tokens"){
+    if(p.expires && now() >= p.expires){
+      return { kind: "pool", left: 0, frac: 0, expired: true, expiresAt: p.expires };
+    }
     if(w && w.resetsAt > now()){
       var tot = Math.max(1, w.resetsAt - w.startedAt);
       return { kind: "cooldown", w: w, remaining: w.resetsAt - now(), vf: Math.max(0, (w.resetsAt - now()) / tot) };
@@ -721,7 +738,9 @@ function visual(p, s){
   if(s.kind === "cooldown")
     return { vf: s.vf, text: fmtHMS(s.remaining), cap: "cooldown", color: "var(--danger)" };
   if(s.kind === "pool")
-    return { vf: s.frac, text: fmtTok(s.left), cap: "tokens left", color: poolColor(s.frac) };
+    return s.expired
+      ? { vf: 0, text: "0", cap: "expired " + fmtDate(s.expiresAt), color: "var(--danger)" }
+      : { vf: s.frac, text: fmtTok(s.left), cap: "tokens left", color: poolColor(s.frac) };
   if(s.kind === "fresh")
     return { vf: 1, text: "FRESH", cap: p.kind === "tokens" ? "pool refilled" : "reset " + fmtClock(s.w.resetsAt), color: "var(--ok)" };
   return { vf: 0, text: "READY", cap: kindLabel(p), color: "var(--track)" };
@@ -737,6 +756,7 @@ var PILL = {
 };
 function pillFor(p, s){
   if(s.kind === "pool"){
+    if(s.expired) return { cls: "pill--danger", t: "expired" };
     var f = s.frac;
     return { cls: f > 0.4 ? "pill--ok" : f > 0.15 ? "pill--warn" : "pill--danger", t: fmtTok(s.left) + " left" };
   }
@@ -783,6 +803,35 @@ function menuHTML(p){
 /* ================= actions ================= */
 function doAction(act, id, opts){
   opts = opts || {};
+  if(act === "add"){
+    /* create-or-update with only the fields the link provides — idempotent, agent-chosen id */
+    var existing = getProvider(id);
+    var domain = opts.domain || null;
+    var name = opts.name || (domain ? baseName(domain) : (existing ? existing.name : id));
+    if(!existing){
+      var kind = opts.kind || "rolling";
+      var np = { id: id, name: name, domain: domain || (id.replace(/[^a-z0-9.-]/gi, "") + ".local"), color: opts.color || pickColor(id), kind: kind };
+      if(domain) np.logoUrl = "https://unavatar.io/" + domain + "?fallback=false";
+      if(kind === "rolling") np.hours = opts.hours || 5;
+      if(kind === "tokens"){ np.pool = opts.pool || 1000000; np.used = 0; np.cooldownH = opts.cooldownH || 24; }
+      if(opts.expires) np.expires = opts.expires;
+      if(opts.specUrl) np.specUrl = opts.specUrl;
+      providers.push(np); idbPut("providers", np); bumpRev();
+      return { kind: "ok", msg: np.name + " added (" + kindLabel(np) + (opts.expires ? " · expires " + fmtDate(opts.expires) : "") + ")" };
+    }
+    var changed = [];
+    if(opts.name){ existing.name = opts.name; changed.push("name"); }
+    if(opts.domain){ existing.domain = opts.domain; existing.logoUrl = "https://unavatar.io/" + opts.domain + "?fallback=false"; changed.push("url"); }
+    if(opts.kind && opts.kind !== existing.kind){ existing.kind = opts.kind; changed.push("kind"); }
+    if(opts.hours){ existing.hours = opts.hours; }
+    if(opts.pool){ existing.pool = opts.pool; }
+    if(opts.cooldownH){ existing.cooldownH = opts.cooldownH; }
+    if(opts.expires){ existing.expires = opts.expires; changed.push("expiry"); }
+    if(opts.specUrl){ existing.specUrl = opts.specUrl; }
+    if(opts.color){ existing.color = opts.color; }
+    idbPut("providers", existing); bumpRev();
+    return { kind: "info", msg: existing.name + " updated" + (changed.length ? " (" + changed.join(", ") + ")" : " — no changes in link") };
+  }
   var p = getProvider(id);
   if(!p) return null;
   var w = latestWin(p.id);
@@ -860,9 +909,9 @@ function uiAction(act, id){
 function baseUrl(){ return String(location.href).split("#")[0]; }
 function linkFor(action, id){ return baseUrl() + "#" + action + "=" + id; }
 function applyLink(params, label){
-  var actKey = params.has("drain") ? "drain" : params.has("cap") ? "cap" : params.has("start") ? "start" : null;
+  var actKey = params.has("add") ? "add" : params.has("reset") ? "resetpool" : params.has("drain") ? "drain" : params.has("cap") ? "cap" : params.has("start") ? "start" : null;
   if(!actKey){ toast("info", "No action in link"); return; }
-  var id = params.get(actKey);
+  var id = params.get(actKey === "resetpool" ? "reset" : actKey);
   var opts = { src: params.get("src") || (label === "demo" ? "demo" : "link") };
   var inD = parseDur(params.get("in"));
   if(inD) opts.durMs = inD;
@@ -870,6 +919,21 @@ function applyLink(params, label){
   if(rst) opts.resetsAt = rst;
   var used = parseTok(params.get("used"));
   if(used != null) opts.used = used;
+  /* provider-definition params (#add) */
+  var hostParam = params.get("url") || params.get("domain");
+  if(hostParam) opts.domain = parseHost(hostParam);
+  if(params.get("name")) opts.name = params.get("name");
+  if(params.get("kind")) opts.kind = params.get("kind");
+  var hoursP = parseDur(params.get("hours"));
+  if(hoursP) opts.hours = Math.round(hoursP / HOUR);
+  var poolP = parseTok(params.get("pool"));
+  if(poolP != null) opts.pool = poolP;
+  var coolP = parseDur(params.get("cooldown"));
+  if(coolP) opts.cooldownH = Math.round(coolP / HOUR);
+  var expP = parseDate(params.get("expires"));
+  if(expP) opts.expires = expP;
+  if(params.get("spec")) opts.specUrl = params.get("spec");
+  if(params.get("color")) opts.color = params.get("color");
   var r = doAction(actKey, id, opts);
   if(r) toast(r.kind, (label ? label + " · " : "") + "#" + actKey + "=" + id + " — " + r.msg);
   else toast("info", "#" + actKey + "=" + id + " ignored — window already active or unknown provider");
@@ -914,7 +978,9 @@ function subLine(p, s){
   }
   if(s.kind === "cooldown") return "exhausted " + fmtClock(s.w.startedAt) + " · " + p.cooldownH + "h cooldown";
   if(s.kind === "fresh") return p.kind === "tokens" ? "pool refilled at " + fmtClock(s.w.resetsAt) : "capacity available since " + fmtClock(s.w.resetsAt);
-  if(s.kind === "pool") return "used " + fmtTok(p.used || 0) + " of " + fmtTok(p.pool);
+  if(s.kind === "pool") return s.expired
+    ? "expired " + fmtDate(s.expiresAt) + " — quota gone"
+    : "used " + fmtTok(p.used || 0) + " of " + fmtTok(p.pool) + (p.expires ? " · expires " + fmtDate(p.expires) : "");
   return s.lastReset ? "last reset " + fmtClock(s.lastReset) : "no window running";
 }
 function paintCard(p, s, r){
@@ -1079,7 +1145,9 @@ function runLabels(p, s){
   }
   if(s.kind === "cooldown") return ["exhausted " + fmtClock(s.w.startedAt), "back " + fmtClock(s.w.resetsAt)];
   if(s.kind === "fresh") return p.kind === "tokens" ? ["pool drained", "refilled " + fmtClock(s.w.resetsAt)] : ["window done", "reset " + fmtClock(s.w.resetsAt)];
-  if(s.kind === "pool") return ["used " + fmtTok(p.used || 0), "of " + fmtTok(p.pool)];
+  if(s.kind === "pool") return s.expired
+    ? ["expired " + fmtDate(s.expiresAt), "quota gone"]
+    : ["used " + fmtTok(p.used || 0), "of " + fmtTok(p.pool) + (p.expires ? " · exp " + fmtDate(p.expires) : "")];
   return ["no window", kindLabel(p)];
 }
 function buildRunway(states){

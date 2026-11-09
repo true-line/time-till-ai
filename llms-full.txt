@@ -106,3 +106,26 @@ When a human pastes a provider's rate-limit message into their AI chat — their
   `<base>#cap=<provider-id>&resets=18:44&src=<your-name>`
 
 If the message mentions token exhaustion rather than a time window, use `#drain=<provider-id>&used=<n>` instead. If no provider matches, say so — do not guess an id. Opening the link in the user's browser is the entire integration: no UI embedding, no API, no auth.
+
+## Creating and updating providers via deep link (#add)
+
+Provider ids in links can be any stable slug *you* choose — `#add` creates the provider on first use and updates only the fields the link provides afterwards. Same link twice = same result (idempotent). This lets an agent construct the full link chain before the provider exists.
+
+```
+#add=<slug>&name=DeepSeek%20v4.1%20Flash&url=qwen.ai&kind=tokens&pool=1m&cooldown=168h&expires=2026-12-13
+#drain=<slug>&used=1m
+#reset=<slug>              refill a token pool to full now (alias of the Reset pool action)
+```
+
+- `name=` display name (URL-encoded); derived from `url` if omitted
+- `url=` / `domain=` provider domain for favicon branding (e.g. `qwen.ai`)
+- `kind=` `rolling` (default) | `weekly` | `tokens`
+- `hours=` rolling window length; `pool=` token pool size (`1m`, `500k`); `cooldown=` cooldown hours (`24h`, `168h`)
+- `expires=YYYY-MM-DD` calendar expiry for free tiers that never refill — at expiry the pool shows `expired` and stops counting down
+- `spec=` quota docs URL; `color=` hex accent
+
+For per-model pools on one platform (e.g. two Qwen Cloud models with separate 1M pools), create one provider per model with distinct slugs — draining one never touches the other.
+
+## Provenance and human-paste
+
+`&src=<agent-name>` tags which agent fired a link. When a human pastes a rate-limit message into your chat, you are the parser: extract provider and reset time, then open `#cap=<id>&resets=HH:MM`. If no provider matches a message, create one with `#add` using a stable slug — do not drain a shared provider to avoid touching unrelated models.
