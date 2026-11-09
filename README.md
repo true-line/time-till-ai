@@ -54,3 +54,7 @@ The **Agent links** button in the app shows this table plus a copyable instructi
 - Service worker for full offline + installable-with-badge PWA.
 - MCP tool wrapper (`arm_window(provider)`) as an alternative to deep links.
 - Auto-detect "resets at …" from clipboard/paste.
+
+## License
+
+MIT — see [LICENSE](LICENSE). © 2026 True-Line AI LLC.
