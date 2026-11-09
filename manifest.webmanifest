@@ -1,0 +1,13 @@
+{
+  "name": "Time till' AI",
+  "short_name": "TimeTillAI",
+  "description": "Provider quota window tracker for AI coding harnesses — 5h rolling, weekly and token-pool cooldowns. By True-Line AI LLC.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e0e0c",
+  "theme_color": "#0e0e0c",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
