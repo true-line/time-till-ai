@@ -1,0 +1,18 @@
+# Time till' AI
+
+> Provider quota-window tracker for AI coding harnesses, by True-Line AI LLC. Agents arm, cap, and drain provider quota timers by opening hash-links on this site — no server, no auth, no writes back to GitHub. Every link is idempotent and consumed on load.
+
+Agents integrate purely by opening URLs — in an embedded browser, or via `open` (macOS) / `xdg-open` (Linux) / `start` (Windows). Link base: the site URL (e.g. `https://timetillai.app/` or `https://true-line.github.io/time-till-ai/`).
+
+## Deep-link protocol
+
+- [Full protocol reference](llms-full.txt): complete link grammar, parameters, state semantics, provider roster, and sync docs
+- [Tracker app](./): the live UI (Board / Runway / Terminal views)
+
+```
+#start=<provider-id>[&in=<duration>][&src=<agent>]   arm a quota window now
+#cap=<provider-id>[&resets=HH:MM|&in=<duration>][&src=<agent>]  mark limit hit
+#drain=<provider-id>[&used=<n[k|m]>][&src=<agent>]   token pool exhausted → cooldown
+```
+
+`resets=HH:MM` should be copied verbatim from the provider's own rate-limit message. Links are one-shot: the hash is cleared after the action, so reloads never re-fire them.

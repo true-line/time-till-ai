@@ -58,3 +58,7 @@ The **Agent links** button in the app shows this table plus a copyable instructi
 ## License
 
 MIT — see [LICENSE](LICENSE). © 2026 True-Line AI LLC.
+
+## For agents
+
+`llms.txt` and `llms-full.txt` are served at the site root for machine discovery — the full deep-link protocol, semantics and roster for automated integrators.

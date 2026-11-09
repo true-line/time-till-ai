@@ -1,0 +1,98 @@
+# Time till' AI — full reference for agents
+
+Time till' AI is a provider quota-window tracker for AI coding harnesses, by True-Line AI LLC (https://timetillai.app, https://true-line.github.io/time-till-ai/).
+
+It is a static page with no backend: all state lives in the visitor's browser (IndexedDB), derived from timestamps, so timers survive tab closure and clock-real restarts. Agents integrate by opening hash-links. Nothing authenticates, nothing writes to GitHub, and opening a link is equivalent to a human clicking in the app.
+
+## State model
+
+Each provider is always in exactly one state:
+
+- `open` — a quota window is running; countdown to reset (brand-colored ring).
+- `capped` — the provider reported the limit was hit; counting down to recovery (red ring).
+- `cooldown` — token pool exhausted; locked until cooldown ends (red ring).
+- `fresh` — reset happened within the last 90 minutes; full capacity.
+- `ready` — idle; no window armed (or token pool has remaining tokens).
+
+For token-pool providers the ring shows tokens left (green > 40%, amber > 15%, red below).
+
+## Quota kinds per provider
+
+- `rolling` — window starts when armed (first message), lasts N hours (default 5). Reset = armed + N h.
+- `weekly` — calendar quota; the period runs Monday 00:00 local → next Monday 00:00.
+- `tokens` — token pool with cooldown: once `pool` tokens are consumed, none are available for `cooldownH` hours (e.g. Qwen Code free tier: 1M tokens, 24h lock).
+
+## Deep-link protocol
+
+Links are the app URL plus a hash. Base examples: `https://timetillai.app/` (custom domain) or `https://true-line.github.io/time-till-ai/` (Pages). Open links with `open` (macOS), `xdg-open` (Linux), `start` (Windows), or any browser/webview.
+
+### Actions
+
+- `#start=<provider-id>` — arm the provider's quota window now (rolling: `hours` long; weekly: current Monday→Monday period). Ignored if a window is already active.
+- `#cap=<provider-id>` — mark the provider capped (limit hit). Ignored if no active window. For token providers this drains the pool instead.
+- `#drain=<provider-id>` — mark a token pool exhausted; starts its cooldown. Ignored if a cooldown is already running.
+
+### Parameters (combine with `&`)
+
+- `&resets=HH:MM` — with `#cap`: absolute reset time, e.g. copied verbatim from the provider CLI's rate-limit message ("resets at 18:44"). Parsed as the next occurrence of that wall-clock time.
+- `&in=<duration>` — relative duration instead: `38m`, `6h`, `2d`, `90s`. With `#cap`: recovery in that long. With `#start`: custom window length overriding the provider default.
+- `&used=<n>` — with `#drain`: tokens consumed (e.g. `620k`, `1m`, `400000`). Defaults to the full pool.
+- `&src=<agent-name>` — provenance tag for who opened the link (e.g. `zcode`, `codex`, `claude`). Stored with the window record.
+
+### Semantics
+
+- **Idempotent**: a link whose action is already satisfied (window active, cooldown running, provider unknown) is ignored with a toast — safe to call from recurring hooks.
+- **One-shot**: the hash is applied on page load, then stripped from the address bar; reloads never re-fire it.
+- **Explicit arming only**: windows never auto-rearm. If your harness sends its first message of a session, that is the moment to open `#start`.
+
+## Provider roster (seed)
+
+IDs are lowercase, used verbatim in links:
+
+| id | provider | quota kind | spec docs |
+|---|---|---|---|
+| claude | Claude | 5h rolling | — |
+| codex | Codex | 5h rolling | — |
+| zcode | Z-Code | 5h rolling | — |
+| qwen | Qwen Code | 1M tokens · 24h cooldown | https://docs.qwencloud.com/resources/free-quota |
+| muse | Muse | 5h rolling | — |
+| opencode | OpenCode | weekly | https://opencode.ai/docs/console/models/#free-models |
+| gemini | Gemini CLI | 5h rolling | — |
+| cursor | Cursor | 5h rolling | — |
+| copilot | GitHub Copilot | 5h rolling | — |
+| amp | Amp | 5h rolling | — |
+
+Users add their own providers (URL → favicon branding) with any quota kind; their IDs appear in the app's per-provider menu under "Copy start/cap/exhaust link". When integrating a specific user's harness, prefer the roster block in the app's **Agent links** modal ("Copy instructions for agent") — it always reflects the live roster.
+
+## Example wiring
+
+Session-start hook (arm Z-Code whenever a coding session begins):
+
+```json
+"hooks": { "SessionStart": [{ "hooks": [{
+  "type": "command",
+  "command": "open 'https://timetillai.app/#start=zcode&src=zcode'"
+}] }] }
+```
+
+Rate-limit handler (parse the reset time from the CLI message, then):
+
+```
+open 'https://timetillai.app/#cap=codex&resets=18:44&src=codex'
+```
+
+Free-tier exhaustion (after reading usage from the provider):
+
+```
+open 'https://timetillai.app/#drain=qwen&used=1m&src=qwen'
+```
+
+## Sync and data
+
+- Cross-device sync: one JSON blob (`timetillai-state.json`) in a private GitHub gist. The gist ID is the shareable "session code" (read anywhere, even `curl`); a GitHub token on one device enables push. Last-write-wins by revision.
+- Local backup: JSON export/import in Settings.
+- The tab title always shows the next countdown, so a pinned tab is a live status surface.
+
+## Operator
+
+True-Line AI LLC — https://www.true-line.ai · app: https://timetillai.app · repo: https://github.com/true-line/time-till-ai
